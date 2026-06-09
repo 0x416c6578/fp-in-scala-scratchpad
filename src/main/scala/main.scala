@@ -25,23 +25,65 @@ def main(): Unit = {
   println(foldMaximum(Branch(Leaf(3), Branch(Leaf(6), Leaf(3)))))
   println(depth(Branch(Branch(Leaf(4), Leaf(6)), Leaf(3))))
   println(foldDepth(Branch(Branch(Leaf(4), Leaf(6)), Leaf(3))))
-  println(Some(5).map(_+4))
+  println(Some(5).map(_ + 4))
   println((None: MyOption[Int]).map(_ + 3))
-  println(mean(List(1.0,2.0,3.0,4.0,5.0)))
-  println(variance(List(1.0,2.0,3.0,4.0,5.0)))
+  println(mean(List(1.0, 2.0, 3.0, 4.0, 5.0)))
+  println(variance(List(1.0, 2.0, 3.0, 4.0, 5.0)))
   println(sequence(MyList(Some(3), Some(4))))
   val incrementFailingOnThree: Int => MyOption[Int] = a => if a == 3 then None else Some(a + 1)
-  println(_traverse(MyList(1,2,3,4))(incrementFailingOnThree))
+  println(_traverse(MyList(1, 2, 3, 4))(incrementFailingOnThree))
+  println(sequence(MyList(MyEither.Right(1), MyEither.Right(2), MyEither.Left("Uh oh"), MyEither.Right(3), MyEither.Left("Stinky"))))
+  println(MyEither.Left("Uh oh").map2(MyEither.Left("Stinky"))((_,_)))
+  println(map2Both(MyEither.Left("Uh oh"), MyEither.Left("Stinky"), (_,_)))
 }
+
+def map2Both[E, A, B, C](
+    a: MyEither[E, A],
+    b: MyEither[E, B],
+    f: (A, B) => C): MyEither[MyList[E], C] =
+  (a, b) match {
+    case (MyEither.Right(aa), MyEither.Right(bb)) => MyEither.Right(f(aa, bb))
+    case (MyEither.Left(e), MyEither.Right(_)) => MyEither.Left(MyList(e))
+    case (MyEither.Right(_), MyEither.Left(e)) => MyEither.Left(MyList(e))
+    case (MyEither.Left(e1), MyEither.Left(e2)) => MyEither.Left(MyList(e1, e2))
+  }
+
+def sequence[E, A](as: MyList[MyEither[E, A]]): MyEither[E, MyList[A]] =
+  foldRight(as, MyEither.Right(Nil): MyEither[E, MyList[A]], (a: MyEither[E, A], acc) => a.map2(acc)(Cons(_, _)))
+
+def traverse[E, A, B](as: MyList[A])(f: A => MyEither[E, B]): MyEither[E, MyList[B]] =
+  foldRight(as, MyEither.Right(Nil), (a: A, acc: MyEither[E, MyList[B]]) => f(a).map2(acc)(Cons(_, _)))
+
+enum MyEither[+E, +A]:
+  case Left(value: E)
+  case Right(value: A)
+
+  def map[B](f: A => B): MyEither[E, B] = this match {
+    case Right(value) => Right(f(value))
+    case Left(value) => Left(value)
+  }
+
+  def flatMap[EE >: E, B](f: A => MyEither[EE, B]): MyEither[EE, B] = this match {
+    case Left(value) => Left(value)
+    case Right(value) => f(value)
+  }
+
+  def orElse[EE >: E, B >: A](b: => MyEither[EE, B]): MyEither[EE, B] = this match {
+    case Left(_) => b
+    case Right(value) => Right(value)
+  }
+
+  def map2[EE >: E, B, C](that: MyEither[EE, B])(f: (A, B) => C): MyEither[EE, C] =
+    this.flatMap(_this => that.map(_that => f(_this, _that)))
 
 def traverse[A, B](as: MyList[A])(f: A => MyOption[B]): MyOption[MyList[B]] =
   sequence(map(as, f))
 
 def _traverse[A, B](as: MyList[A])(f: A => MyOption[B]): MyOption[MyList[B]] =
-  foldRight(as, Some(Nil), (a: A, acc) => map2(f(a), acc)(Cons(_,_)))
+  foldRight(as, Some(Nil), (a: A, acc) => map2(f(a), acc)(Cons(_, _)))
 
 def sequence[A](as: MyList[MyOption[A]]): MyOption[MyList[A]] =
-  foldRight(as, Some(Nil), (a: MyOption[A], acc) => map2(a, acc)(Cons(_,_)))
+  foldRight(as, Some(Nil), (a: MyOption[A], acc) => map2(a, acc)(Cons(_, _)))
 
 // this could be done with pattern matching but we can map/flatmap for nicer implementation
 def map2[A, B, C](a: MyOption[A], _b: MyOption[B])(f: (A, B) => C): MyOption[C] =
@@ -56,7 +98,7 @@ def mean(xs: Seq[Double]): MyOption[Double] =
 
 def variance(xs: Seq[Double]): MyOption[Double] =
   val meanXs = mean(xs)
-  meanXs.flatMap(m => mean(xs.map(x => math.pow(x-m, 2))))
+  meanXs.flatMap(m => mean(xs.map(x => math.pow(x - m, 2))))
 
 enum MyOption[+A]:
   case Some(get: A)
@@ -216,6 +258,7 @@ enum MyList[+A]:
         case Cons(h, Nil) => format(Nil, acc + h.toString)
         case Cons(h, t) => format(t, acc + h.toString + ", ")
       }
+
       "[" + format(this, "")
   }
 
